@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Jungle Adventure Run</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="ui-layer">
+            <div id="hud" class="hidden">
+                <div class="hud-item">🪙 Coins: <span id="coin-count">0</span></div>
+                <div class="hud-item">📏 Dist: <span id="dist-count">0</span>m</div>
+                <div class="hud-item">❤️ Lives: <span id="lives-count">3</span></div>
+                <button id="pause-btn">⏸️</button>
+            </div>
+
+            <div id="start-screen" class="screen">
+                <h1 class="glow-title">JUNGLE ADVENTURE</h1>
+                <p class="subtitle">Survive the Dark Wilderness</p>
+                <button id="start-btn" class="btn primary-btn">PLAY NOW</button>
+                <div class="instructions">
+                    <p>👆 Swipe Up: Jump | Swipe Down: Slide</p>
+                    <p>👈 Swipe Left/Right: Change Lane 👉</p>
+                </div>
+            </div>
+
+            <div id="pause-screen" class="screen hidden">
+                <h2>Game Paused</h2>
+                <button id="resume-btn" class="btn primary-btn">Resume</button>
+                <button id="restart-pause-btn" class="btn secondary-btn">Restart</button>
+            </div>
+
+            <div id="game-over-screen" class="screen hidden">
+                <h2 class="game-over-title">GAME OVER</h2>
+                <div class="score-card">
+                    <p>Final Score: <span id="final-score">0</span>m</p>
+                    <p>Coins Collected: <span id="final-coins">0</span></p>
+                    <p>High Score: <span id="high-score">0</span>m</p>
+                </div>
+                <button id="restart-btn" class="btn primary-btn">PLAY AGAIN</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
