@@ -1,0 +1,459 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Resize Canvas to fit container dynamically
+function resizeCanvas() {
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Game States
+const STATE = { START: 1, PLAYING: 2, PAUSED: 3, GAMEOVER: 4 };
+let gameState = STATE.START;
+
+// Game Variables
+let score = 0;
+let coins = 0;
+let lives = 3;
+let highScore = localStorage.getItem('jungle_highscore') || 0;
+let gameSpeed = 5;
+let worldDistance = 0;
+
+// Lanes Configuration (3 Lanes)
+const lanes = [canvas.width / 2 - 80, canvas.width / 2, canvas.width / 2 + 80];
+let currentLaneIndex = 1;
+
+// Player Object
+let player = {
+    x: lanes[1],
+    y: canvas.height - 180,
+    width: 45,
+    height: 70,
+    targetX: lanes[1],
+    vy: 0,
+    isJumping: false,
+    isSliding: false,
+    slideTimer: 0,
+    shield: false,
+    shieldTimer: 0
+};
+
+// Spawning tracking arrays
+let obstacles = [];
+let collectibleItems = [];
+let particles = [];
+
+// Parallax backgrounds layers
+let bgLayers = [
+    { speed: 0.2, x: 0, color: '#131c2e' }, // Deep Moon/Sky
+    { speed: 0.5, x: 0, color: '#1b2a4a' }, // Distant Trees
+    { speed: 1.0, x: 0, color: '#273c68' }  // Closer Jungle
+];
+
+// Touch & Swipe Controls
+let touchStartX = 0;
+let touchStartY = 0;
+let touchEndX = 0;
+let touchEndY = 0;
+
+window.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+}, false);
+
+window.addEventListener('touchend', e => {
+    touchEndX = e.changedTouches[0].screenX;
+    touchEndY = e.changedTouches[0].screenY;
+    handleSwipe();
+}, false);
+
+// Keyboard controls for desktop testing compatibility
+window.addEventListener('keydown', e => {
+    if (gameState !== STATE.PLAYING) return;
+    if (e.key === 'ArrowLeft' || e.key === 'a') changeLane(-1);
+    if (e.key === 'ArrowRight' || e.key === 'd') changeLane(1);
+    if (e.key === 'ArrowUp' || e.key === 'w') triggerJump();
+    if (e.key === 'ArrowDown' || e.key === 's') triggerSlide();
+});
+
+function handleSwipe() {
+    if (gameState !== STATE.PLAYING) return;
+    let diffX = touchEndX - touchStartX;
+    let diffY = touchEndY - touchStartY;
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+        if (Math.abs(diffX) > 30) {
+            if (diffX > 0) changeLane(1);
+            else changeLane(-1);
+        }
+    } else {
+        if (Math.abs(diffY) > 30) {
+            if (diffY > 0) triggerSlide();
+            else triggerJump();
+        }
+    }
+}
+
+function changeLane(direction) {
+    currentLaneIndex += direction;
+    if (currentLaneIndex < 0) currentLaneIndex = 0;
+    if (currentLaneIndex > lanes.length - 1) currentLaneIndex = lanes.length - 1;
+    player.targetX = lanes[currentLaneIndex];
+}
+
+function triggerJump() {
+    if (!player.isJumping && !player.isSliding) {
+        player.vy = -13;
+        player.isJumping = true;
+    }
+}
+
+function triggerSlide() {
+    if (!player.isJumping && !player.isSliding) {
+        player.isSliding = true;
+        player.slideTimer = 45; // Frames for sliding duration
+    }
+}
+
+// UI Elements Binding
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('restart-btn').addEventListener('click', startGame);
+document.getElementById('restart-pause-btn').addEventListener('click', startGame);
+document.getElementById('pause-btn').addEventListener('click', togglePause);
+document.getElementById('resume-btn').addEventListener('click', togglePause);
+
+function startGame() {
+    score = 0;
+    coins = 0;
+    lives = 3;
+    gameSpeed = 6;
+    worldDistance = 0;
+    currentLaneIndex = 1;
+    player.x = lanes[1];
+    player.targetX = lanes[1];
+    player.isJumping = false;
+    player.isSliding = false;
+    player.shield = false;
+    obstacles = [];
+    collectibleItems = [];
+    particles = [];
+
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+
+    gameState = STATE.PLAYING;
+}
+
+function togglePause() {
+    if (gameState === STATE.PLAYING) {
+        gameState = STATE.PAUSED;
+        document.getElementById('pause-screen').classList.remove('hidden');
+    } else if (gameState === STATE.PAUSED) {
+        gameState = STATE.PLAYING;
+        document.getElementById('pause-screen').classList.add('hidden');
+    }
+}
+
+function gameOver() {
+    gameState = STATE.GAMEOVER;
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('jungle_highscore', highScore);
+    }
+    document.getElementById('final-score').innerText = Math.floor(score);
+    document.getElementById('final-coins').innerText = coins;
+    document.getElementById('high-score').innerText = Math.floor(highScore);
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.remove('hidden');
+}
+
+// Spawning Game Objects
+let spawnTimer = 0;
+function spawnElements() {
+    spawnTimer++;
+    if (spawnTimer > Math.max(30, 90 - Math.floor(gameSpeed * 3))) {
+        spawnTimer = 0;
+        let laneIdx = Math.floor(Math.random() * lanes.length);
+        
+        // Decide Obstacle or Item
+        let typeRand = Math.random();
+        if (typeRand < 0.6) {
+            // Obstacle type: Log, Rock, or Trap
+            let obsTypes = ['rock', 'log', 'pit'];
+            let chosenType = obsTypes[Math.floor(Math.random() * obsTypes.length)];
+            obstacles.push({
+                lane: laneIdx,
+                x: lanes[laneIdx],
+                y: -50,
+                type: chosenType,
+                width: 50,
+                height: chosenType === 'log' ? 30 : 45
+            });
+        } else if (typeRand < 0.85) {
+            // Coin
+            collectibleItems.push({
+                lane: laneIdx,
+                x: lanes[laneIdx],
+                y: -50,
+                type: 'coin',
+                width: 25,
+                height: 25
+            });
+        } else {
+            // Power-up (Shield or Magnet)
+            let powTypes = ['shield', 'speed'];
+            let chosenPow = powTypes[Math.floor(Math.random() * powTypes.length)];
+            collectibleItems.push({
+                lane: laneIdx,
+                x: lanes[laneIdx],
+                y: -50,
+                type: chosenPow,
+                width: 30,
+                height: 30
+            });
+        }
+    }
+}
+
+// Game Logic Update Loop
+function update() {
+    if (gameState !== STATE.PLAYING) return;
+
+    // Increment progression
+    worldDistance += gameSpeed * 0.1;
+    score = worldDistance;
+    gameSpeed = 6 + Math.floor(worldDistance / 250); // Progressive difficulty
+
+    // Smooth lane movement interpolation
+    player.x += (player.targetX - player.x) * 0.2;
+
+    // Jump mechanics
+    if (player.isJumping) {
+        player.y += player.vy;
+        player.vy += 0.6; // Gravity
+        if (player.y >= canvas.height - 180) {
+            player.y = canvas.height - 180;
+            player.isJumping = false;
+        }
+    }
+
+    // Slide mechanics
+    if (player.isSliding) {
+        player.slideTimer--;
+        if (player.slideTimer <= 0) {
+            player.isSliding = false;
+        }
+    }
+
+    // Power-up Timers
+    if (player.shield) {
+        player.shieldTimer--;
+        if (player.shieldTimer <= 0) player.shield = false;
+    }
+
+    // Update Obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let obs = obstacles[i];
+        obs.y += gameSpeed;
+
+        // Collision Check (Bounding Box)
+        let pHeight = player.isSliding ? 35 : player.height;
+        let pY = player.isSliding ? player.y + 35 : player.y;
+
+        let laneMatch = Math.abs(player.x - obs.x) < 35;
+        let verticalMatch = pY < obs.y + obs.height && pY + pHeight > obs.y;
+
+        if (laneMatch && verticalMatch) {
+            if (player.shield) {
+                player.shield = false; // Shield absorbs hit
+                obstacles.splice(i, 1);
+            } else {
+                lives--;
+                obstacles.splice(i, 1);
+                if (lives <= 0) {
+                    gameOver();
+                }
+            }
+        }
+
+        // Remove off-screen obstacles
+        if (obs.y > canvas.height + 50) {
+            obstacles.splice(i, 1);
+        }
+    }
+
+    // Update Collectibles
+    for (let i = collectibleItems.length - 1; i >= 0; i--) {
+        let item = collectibleItems[i];
+        item.y += gameSpeed;
+
+        let laneMatch = Math.abs(player.x - item.x) < 40;
+        let verticalMatch = player.y < item.y + item.height && player.y + player.height > item.y;
+
+        if (laneMatch && verticalMatch) {
+            if (item.type === 'coin') {
+                coins++;
+            } else if (item.type === 'shield') {
+                player.shield = true;
+                player.shieldTimer = 300; // ~5 seconds duration
+            } else if (item.type === 'speed') {
+                worldDistance += 50; // Bonus distance boost
+            }
+            collectibleItems.splice(i, 1);
+        }
+
+        if (item.y > canvas.height + 50) {
+            collectibleItems.splice(i, 1);
+        }
+    }
+
+    spawnElements();
+
+    // Update HUD text values
+    document.getElementById('coin-count').innerText = coins;
+    document.getElementById('dist-count').innerText = Math.floor(score);
+    document.getElementById('lives-count').innerText = lives;
+}
+
+// Rendering graphics on Canvas
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 1. Draw Parallax Background & Jungle Atmosphere
+    ctx.fillStyle = '#0b0f19';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Moonlight glow
+    let moonGrad = ctx.createRadialGradient(canvas.width - 80, 80, 10, canvas.width - 80, 80, 150);
+    moonGrad.addColorStop(0, 'rgba(255, 255, 200, 0.25)');
+    moonGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = moonGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Perspective Jungle Road / Lanes
+    let roadWidth = 260;
+    let roadX = (canvas.width - roadWidth) / 2;
+    
+    ctx.fillStyle = '#111827';
+    ctx.beginPath();
+    ctx.moveTo(roadX - 40, canvas.height);
+    ctx.lineTo(roadX + roadWidth + 40, canvas.height);
+    ctx.lineTo(roadX + roadWidth, 0);
+    ctx.lineTo(roadX, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Lane dividing lines (dashed neon style)
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.2)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([20, 20]);
+    ctx.lineDashOffset = -worldDistance * 5;
+    
+    ctx.beginPath();
+    ctx.moveTo(lanes[0] + 40, 0);
+    ctx.lineTo(lanes[0] + 40, canvas.height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(lanes[1] + 40, 0);
+    ctx.lineTo(lanes[1] + 40, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset line dash
+
+    // 2. Draw Collectibles
+    collectibleItems.forEach(item => {
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        if (item.type === 'coin') {
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(0, 0, item.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        } else if (item.type === 'shield') {
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillRect(-item.width/2, -item.height/2, item.width, item.height);
+        } else {
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(-item.width/2, -item.height/2, item.width, item.height);
+        }
+        ctx.restore();
+    });
+
+    // 3. Draw Obstacles
+    obstacles.forEach(obs => {
+        ctx.save();
+        ctx.translate(obs.x, obs.y);
+        if (obs.type === 'rock') {
+            ctx.fillStyle = '#4b5563';
+            ctx.beginPath();
+            ctx.arc(0, 0, obs.width / 2, Math.PI, 0, false);
+            ctx.fill();
+        } else if (obs.type === 'log') {
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
+        } else {
+            ctx.fillStyle = '#020617'; // Pit
+            ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
+        }
+        ctx.restore();
+    });
+
+    // 4. Draw Player Character
+    ctx.save();
+    ctx.translate(player.x, player.y);
+
+    // Shield Aura Effect
+    if (player.shield) {
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, player.height / 2, player.width, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // Player Body (Cinematic Adventurer Design)
+    let pDrawHeight = player.isSliding ? 35 : player.height;
+    let pDrawY = player.isSliding ? 35 : 0;
+
+    // Torso / Jacket
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(-player.width/2, pDrawY, player.width, pDrawHeight * 0.6);
+
+    // Head / Face mask
+    ctx.fillStyle = '#f87171';
+    ctx.beginPath();
+    ctx.arc(0, pDrawY - 10, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs / Running animation simulation using simple trigonometric oscillations
+    if (!player.isJumping && !player.isSliding) {
+        let legSwing = Math.sin(worldDistance * 0.5) * 12;
+        ctx.strokeStyle = '#1f2937';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-10, pDrawY + pDrawHeight * 0.6);
+        ctx.lineTo(-10 + legSwing, pDrawY + pDrawHeight);
+        ctx.moveTo(10, pDrawY + pDrawHeight * 0.6);
+        ctx.lineTo(10 - legSwing, pDrawY + pDrawHeight);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// Main Game Engine Loop
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// Initialize loop execution
+loop();
