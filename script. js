@@ -45,13 +45,6 @@ let obstacles = [];
 let collectibleItems = [];
 let particles = [];
 
-// Parallax backgrounds layers
-let bgLayers = [
-    { speed: 0.2, x: 0, color: '#131c2e' }, // Deep Moon/Sky
-    { speed: 0.5, x: 0, color: '#1b2a4a' }, // Distant Trees
-    { speed: 1.0, x: 0, color: '#273c68' }  // Closer Jungle
-];
-
 // Touch & Swipe Controls
 let touchStartX = 0;
 let touchStartY = 0;
@@ -113,16 +106,36 @@ function triggerJump() {
 function triggerSlide() {
     if (!player.isJumping && !player.isSliding) {
         player.isSliding = true;
-        player.slideTimer = 45; // Frames for sliding duration
+        player.slideTimer = 45;
     }
 }
 
-// UI Elements Binding
-document.getElementById('start-btn').addEventListener('click', startGame);
-document.getElementById('restart-btn').addEventListener('click', startGame);
-document.getElementById('restart-pause-btn').addEventListener('click', startGame);
-document.getElementById('pause-btn').addEventListener('click', togglePause);
-document.getElementById('resume-btn').addEventListener('click', togglePause);
+// UI Elements Binding with Touch & Click support
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const restartPauseBtn = document.getElementById('restart-pause-btn');
+
+[startBtn, restartBtn, restartPauseBtn].forEach(btn => {
+    if(btn) {
+        btn.addEventListener('click', startGame);
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            startGame();
+        });
+    }
+});
+
+const pauseBtn = document.getElementById('pause-btn');
+const resumeBtn = document.getElementById('resume-btn');
+[pauseBtn, resumeBtn].forEach(btn => {
+    if(btn) {
+        btn.addEventListener('click', togglePause);
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            togglePause();
+        });
+    }
+});
 
 function startGame() {
     score = 0;
@@ -179,10 +192,8 @@ function spawnElements() {
         spawnTimer = 0;
         let laneIdx = Math.floor(Math.random() * lanes.length);
         
-        // Decide Obstacle or Item
         let typeRand = Math.random();
         if (typeRand < 0.6) {
-            // Obstacle type: Log, Rock, or Trap
             let obsTypes = ['rock', 'log', 'pit'];
             let chosenType = obsTypes[Math.floor(Math.random() * obsTypes.length)];
             obstacles.push({
@@ -194,7 +205,6 @@ function spawnElements() {
                 height: chosenType === 'log' ? 30 : 45
             });
         } else if (typeRand < 0.85) {
-            // Coin
             collectibleItems.push({
                 lane: laneIdx,
                 x: lanes[laneIdx],
@@ -204,7 +214,6 @@ function spawnElements() {
                 height: 25
             });
         } else {
-            // Power-up (Shield or Magnet)
             let powTypes = ['shield', 'speed'];
             let chosenPow = powTypes[Math.floor(Math.random() * powTypes.length)];
             collectibleItems.push({
@@ -223,25 +232,21 @@ function spawnElements() {
 function update() {
     if (gameState !== STATE.PLAYING) return;
 
-    // Increment progression
     worldDistance += gameSpeed * 0.1;
     score = worldDistance;
-    gameSpeed = 6 + Math.floor(worldDistance / 250); // Progressive difficulty
+    gameSpeed = 6 + Math.floor(worldDistance / 250);
 
-    // Smooth lane movement interpolation
     player.x += (player.targetX - player.x) * 0.2;
 
-    // Jump mechanics
     if (player.isJumping) {
         player.y += player.vy;
-        player.vy += 0.6; // Gravity
+        player.vy += 0.6;
         if (player.y >= canvas.height - 180) {
             player.y = canvas.height - 180;
             player.isJumping = false;
         }
     }
 
-    // Slide mechanics
     if (player.isSliding) {
         player.slideTimer--;
         if (player.slideTimer <= 0) {
@@ -249,18 +254,15 @@ function update() {
         }
     }
 
-    // Power-up Timers
     if (player.shield) {
         player.shieldTimer--;
         if (player.shieldTimer <= 0) player.shield = false;
     }
 
-    // Update Obstacles
     for (let i = obstacles.length - 1; i >= 0; i--) {
         let obs = obstacles[i];
         obs.y += gameSpeed;
 
-        // Collision Check (Bounding Box)
         let pHeight = player.isSliding ? 35 : player.height;
         let pY = player.isSliding ? player.y + 35 : player.y;
 
@@ -269,7 +271,7 @@ function update() {
 
         if (laneMatch && verticalMatch) {
             if (player.shield) {
-                player.shield = false; // Shield absorbs hit
+                player.shield = false;
                 obstacles.splice(i, 1);
             } else {
                 lives--;
@@ -280,13 +282,11 @@ function update() {
             }
         }
 
-        // Remove off-screen obstacles
         if (obs.y > canvas.height + 50) {
             obstacles.splice(i, 1);
         }
     }
 
-    // Update Collectibles
     for (let i = collectibleItems.length - 1; i >= 0; i--) {
         let item = collectibleItems[i];
         item.y += gameSpeed;
@@ -299,9 +299,9 @@ function update() {
                 coins++;
             } else if (item.type === 'shield') {
                 player.shield = true;
-                player.shieldTimer = 300; // ~5 seconds duration
+                player.shieldTimer = 300;
             } else if (item.type === 'speed') {
-                worldDistance += 50; // Bonus distance boost
+                worldDistance += 50;
             }
             collectibleItems.splice(i, 1);
         }
@@ -313,7 +313,6 @@ function update() {
 
     spawnElements();
 
-    // Update HUD text values
     document.getElementById('coin-count').innerText = coins;
     document.getElementById('dist-count').innerText = Math.floor(score);
     document.getElementById('lives-count').innerText = lives;
@@ -323,18 +322,15 @@ function update() {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. Draw Parallax Background & Jungle Atmosphere
     ctx.fillStyle = '#0b0f19';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Moonlight glow
     let moonGrad = ctx.createRadialGradient(canvas.width - 80, 80, 10, canvas.width - 80, 80, 150);
     moonGrad.addColorStop(0, 'rgba(255, 255, 200, 0.25)');
     moonGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = moonGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Perspective Jungle Road / Lanes
     let roadWidth = 260;
     let roadX = (canvas.width - roadWidth) / 2;
     
@@ -347,7 +343,6 @@ function draw() {
     ctx.closePath();
     ctx.fill();
 
-    // Lane dividing lines (dashed neon style)
     ctx.strokeStyle = 'rgba(0, 255, 204, 0.2)';
     ctx.lineWidth = 3;
     ctx.setLineDash([20, 20]);
@@ -362,9 +357,8 @@ function draw() {
     ctx.moveTo(lanes[1] + 40, 0);
     ctx.lineTo(lanes[1] + 40, canvas.height);
     ctx.stroke();
-    ctx.setLineDash([]); // Reset line dash
+    ctx.setLineDash([]);
 
-    // 2. Draw Collectibles
     collectibleItems.forEach(item => {
         ctx.save();
         ctx.translate(item.x, item.y);
@@ -386,7 +380,6 @@ function draw() {
         ctx.restore();
     });
 
-    // 3. Draw Obstacles
     obstacles.forEach(obs => {
         ctx.save();
         ctx.translate(obs.x, obs.y);
@@ -399,17 +392,15 @@ function draw() {
             ctx.fillStyle = '#78350f';
             ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
         } else {
-            ctx.fillStyle = '#020617'; // Pit
+            ctx.fillStyle = '#020617';
             ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
         }
         ctx.restore();
     });
 
-    // 4. Draw Player Character
     ctx.save();
     ctx.translate(player.x, player.y);
 
-    // Shield Aura Effect
     if (player.shield) {
         ctx.strokeStyle = '#60a5fa';
         ctx.lineWidth = 4;
@@ -418,21 +409,17 @@ function draw() {
         ctx.stroke();
     }
 
-    // Player Body (Cinematic Adventurer Design)
     let pDrawHeight = player.isSliding ? 35 : player.height;
     let pDrawY = player.isSliding ? 35 : 0;
 
-    // Torso / Jacket
     ctx.fillStyle = '#ef4444';
     ctx.fillRect(-player.width/2, pDrawY, player.width, pDrawHeight * 0.6);
 
-    // Head / Face mask
     ctx.fillStyle = '#f87171';
     ctx.beginPath();
     ctx.arc(0, pDrawY - 10, 14, 0, Math.PI * 2);
     ctx.fill();
 
-    // Legs / Running animation simulation using simple trigonometric oscillations
     if (!player.isJumping && !player.isSliding) {
         let legSwing = Math.sin(worldDistance * 0.5) * 12;
         ctx.strokeStyle = '#1f2937';
@@ -448,12 +435,10 @@ function draw() {
     ctx.restore();
 }
 
-// Main Game Engine Loop
 function loop() {
     update();
     draw();
     requestAnimationFrame(loop);
 }
 
-// Initialize loop execution
 loop();
